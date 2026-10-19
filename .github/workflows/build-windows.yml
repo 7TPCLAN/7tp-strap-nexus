@@ -1,19 +1,23 @@
-name: Build Windows app
+name: Build Windows installer
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       - "src/**"
       - "requirements.txt"
       - "README.md"
       - "THIRD_PARTY_NOTICES.md"
+      - "installer/**"
       - ".github/workflows/build-windows.yml"
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -28,25 +32,38 @@ jobs:
           $extract = Join-Path $env:RUNNER_TEMP "ffmpeg-lgpl"
           Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-lgpl.zip" -OutFile $archive
           Expand-Archive -Path $archive -DestinationPath $extract -Force
-          $ffmpeg = Get-ChildItem -Path $extract -Filter "ffmpeg.exe" -File -Recurse | Select-Object -First 1
+          $ffmpeg = Get-ChildItem -Path $extract -Filter "ffmpeg.exe" -File -Recurse | Where-Object { $_.FullName -match '[\\/]bin[\\/]ffmpeg\.exe$' } | Select-Object -First 1
           if (-not $ffmpeg) { throw "Could not find ffmpeg.exe in the downloaded FFmpeg archive." }
+          $bin = $ffmpeg.Directory.FullName
           New-Item -ItemType Directory -Force -Path "vendor/ffmpeg" | Out-Null
-          Copy-Item $ffmpeg.FullName "vendor/ffmpeg/ffmpeg.exe" -Force
+          Copy-Item (Join-Path $bin "*") "vendor/ffmpeg/" -Force
           Invoke-WebRequest -Uri "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1" -OutFile "vendor/ffmpeg/COPYING.LGPLv2.1"
           @"
           FFmpeg binary build: BtbN FFmpeg Builds (win64 LGPL)
           Download: https://github.com/BtbN/FFmpeg-Builds/releases
-          FFmpeg project and source: https://ffmpeg.org/
-          License: GNU Lesser General Public License, version 2.1 or later.
-          This build uses the native MPEG-4 video encoder for recording and does not require libx264.
+          FFmpeg project: https://ffmpeg.org/
+          License: GNU Lesser General Public License (LGPL), version 2.1 or later.
+          This build uses FFmpeg's native MPEG-4 video encoder and does not require libx264.
+          The release bundles the FFmpeg executable and its accompanying DLL files from the same build.
           "@ | Set-Content -Encoding utf8 "vendor/ffmpeg/FFMPEG-BUILD-NOTICE.txt"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-      - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name "7TP Nexus Strap" --add-binary "vendor/ffmpeg/ffmpeg.exe;ffmpeg" src/main.py
+      - name: Build app with bundled FFmpeg
+        shell: pwsh
+        run: |
+          $pyiArgs = @(
+            "--noconfirm", "--clean", "--windowed",
+            "--name", "7TP Nexus Strap",
+            "--add-binary", "vendor/ffmpeg/ffmpeg.exe;ffmpeg",
+            "src/main.py"
+          )
+          Get-ChildItem "vendor/ffmpeg" -Filter "*.dll" -File | ForEach-Object {
+            $pyiArgs += @("--add-binary", "$($_.FullName);ffmpeg")
+          }
+          pyinstaller @pyiArgs
       - name: Include third-party notices
         shell: pwsh
         run: |
@@ -54,8 +71,30 @@ jobs:
           Copy-Item "THIRD_PARTY_NOTICES.md" "$appDir/THIRD_PARTY_NOTICES.md" -Force
           Copy-Item "vendor/ffmpeg/COPYING.LGPLv2.1" "$appDir/COPYING.LGPLv2.1" -Force
           Copy-Item "vendor/ffmpeg/FFMPEG-BUILD-NOTICE.txt" "$appDir/FFMPEG-BUILD-NOTICE.txt" -Force
-      - name: Upload executable folder
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Build single setup EXE
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like "refs/tags/v*") {
+            $env:NEXUS_VERSION = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            $env:NEXUS_VERSION = "0.1.0-dev"
+          }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DNexusVersion=$env:NEXUS_VERSION" "installer/NexusStrap.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+      - name: Upload setup EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 7TP-Nexus-Strap-Windows
-          path: dist/
+          name: 7TP-Nexus-Strap-Setup
+          path: dist-installer/7TP-Nexus-Strap-Setup.exe
+          if-no-files-found: error
+      - name: Publish GitHub Release with setup EXE only
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 7TP Nexus Strap ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist-installer/7TP-Nexus-Strap-Setup.exe
+          fail_on_unmatched_files: true
