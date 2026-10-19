@@ -67,10 +67,18 @@ jobs:
       - name: Include third-party notices
         shell: pwsh
         run: |
-          $appDir = "dist/7TP Nexus Strap"
-          Copy-Item "THIRD_PARTY_NOTICES.md" "$appDir/THIRD_PARTY_NOTICES.md" -Force
-          Copy-Item "vendor/ffmpeg/COPYING.LGPLv2.1" "$appDir/COPYING.LGPLv2.1" -Force
-          Copy-Item "vendor/ffmpeg/FFMPEG-BUILD-NOTICE.txt" "$appDir/FFMPEG-BUILD-NOTICE.txt" -Force
+          $repoRoot = $env:GITHUB_WORKSPACE
+          $appDir = Join-Path $repoRoot "dist/7TP Nexus Strap"
+          $notice = Join-Path $repoRoot "THIRD_PARTY_NOTICES.md"
+          $license = Join-Path $repoRoot "vendor/ffmpeg/COPYING.LGPLv2.1"
+          $ffmpegNotice = Join-Path $repoRoot "vendor/ffmpeg/FFMPEG-BUILD-NOTICE.txt"
+          if (-not (Test-Path (Join-Path $appDir "7TP Nexus Strap.exe"))) { throw "Packaged app executable missing: $appDir" }
+          foreach ($required in @($notice, $license, $ffmpegNotice)) {
+            if (-not (Test-Path $required)) { throw "Required licensing file missing: $required" }
+          }
+          Copy-Item $notice (Join-Path $appDir "THIRD_PARTY_NOTICES.md") -Force
+          Copy-Item $license (Join-Path $appDir "COPYING.LGPLv2.1") -Force
+          Copy-Item $ffmpegNotice (Join-Path $appDir "FFMPEG-BUILD-NOTICE.txt") -Force
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --yes --no-progress
