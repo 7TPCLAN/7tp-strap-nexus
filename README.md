@@ -20,7 +20,7 @@ By 7TPCLAN — Developer: ThunderPainYT
 3. Start the app: `python src/main.py`
 
 ## Windows build
-GitHub Actions downloads an LGPL FFmpeg Windows build, bundles it into the Windows app, and uploads the executable folder as an artifact when app/dependency/workflow files change, or when manually triggered from the Actions tab. The artifact includes FFmpeg license and third-party notices.
+GitHub Actions downloads an LGPL FFmpeg Windows build, bundles it with the app, packages everything into a single `7TP-Nexus-Strap-Setup.exe` installer using Inno Setup, and uploads that installer as the build artifact. Pushing a version tag such as `v0.1.0` publishes a GitHub Release with the setup EXE as its only attached release asset. The installed app includes FFmpeg license and third-party notices.
 
 ## Third-party software and licensing
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for FFmpeg build and license information. The Windows release includes the LGPL license text beside the application.
