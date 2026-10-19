@@ -7,6 +7,8 @@ on:
     paths:
       - "src/**"
       - "requirements.txt"
+      - "README.md"
+      - "THIRD_PARTY_NOTICES.md"
       - ".github/workflows/build-windows.yml"
 
 jobs:
@@ -19,13 +21,39 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Download LGPL FFmpeg build
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "ffmpeg-lgpl.zip"
+          $extract = Join-Path $env:RUNNER_TEMP "ffmpeg-lgpl"
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-lgpl.zip" -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $extract -Force
+          $ffmpeg = Get-ChildItem -Path $extract -Filter "ffmpeg.exe" -File -Recurse | Select-Object -First 1
+          if (-not $ffmpeg) { throw "Could not find ffmpeg.exe in the downloaded FFmpeg archive." }
+          New-Item -ItemType Directory -Force -Path "vendor/ffmpeg" | Out-Null
+          Copy-Item $ffmpeg.FullName "vendor/ffmpeg/ffmpeg.exe" -Force
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/FFmpeg/FFmpeg/master/COPYING.LGPLv2.1" -OutFile "vendor/ffmpeg/COPYING.LGPLv2.1"
+          @"
+          FFmpeg binary build: BtbN FFmpeg Builds (win64 LGPL)
+          Download: https://github.com/BtbN/FFmpeg-Builds/releases
+          FFmpeg project and source: https://ffmpeg.org/
+          License: GNU Lesser General Public License, version 2.1 or later.
+          This build uses the native MPEG-4 video encoder for recording and does not require libx264.
+          "@ | Set-Content -Encoding utf8 "vendor/ffmpeg/FFMPEG-BUILD-NOTICE.txt"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name "7TP Nexus Strap" src/main.py
+        run: pyinstaller --noconfirm --clean --windowed --name "7TP Nexus Strap" --add-binary "vendor/ffmpeg/ffmpeg.exe;ffmpeg" src/main.py
+      - name: Include third-party notices
+        shell: pwsh
+        run: |
+          $appDir = "dist/7TP Nexus Strap"
+          Copy-Item "THIRD_PARTY_NOTICES.md" "$appDir/THIRD_PARTY_NOTICES.md" -Force
+          Copy-Item "vendor/ffmpeg/COPYING.LGPLv2.1" "$appDir/COPYING.LGPLv2.1" -Force
+          Copy-Item "vendor/ffmpeg/FFMPEG-BUILD-NOTICE.txt" "$appDir/FFMPEG-BUILD-NOTICE.txt" -Force
       - name: Upload executable folder
         uses: actions/upload-artifact@v4
         with:
