@@ -8,7 +8,7 @@ By 7TPCLAN — Developer: ThunderPainYT
 ## Implemented in this build
 - **Dashboard:** quick access and live system summary.
 - **Nexus Boost:** read-only CPU and memory monitoring.
-- **Nexus Capture:** optional FFmpeg desktop video recording, with frame-rate and quality choices. FFmpeg must be installed separately and available on PATH. This initial recorder captures video only, without system/game audio.
+- **Nexus Capture:** desktop video recording with frame-rate and quality choices. The Windows GitHub Actions build bundles an LGPL FFmpeg executable, so users do not need to install FFmpeg separately or edit PATH. Recording is video-only; system/game audio is not captured yet. The release uses FFmpeg’s native MPEG-4 video encoder.
 - **Nexus Packs:** import supported image/texture files from ZIP archives or folders into Nexus-managed storage. ZIP path traversal and archive-size limits are checked. This does not automatically apply packs to Roblox.
 - **Nexus Skies:** create local six-face sky presets from one image or six images; images are resized to 512×512 PNGs. Applying these presets to Roblox is not implemented.
 - **FastFlag Studio:** edit, validate, save and export JSON settings files. Exporting does not automatically modify Roblox files.
@@ -20,7 +20,10 @@ By 7TPCLAN — Developer: ThunderPainYT
 3. Start the app: `python src/main.py`
 
 ## Windows build
-GitHub Actions builds a Windows executable artifact on pushes to the main branch when app/dependency/workflow files change, or when manually triggered from the Actions tab.
+GitHub Actions downloads an LGPL FFmpeg Windows build, bundles it into the Windows app, and uploads the executable folder as an artifact when app/dependency/workflow files change, or when manually triggered from the Actions tab. The artifact includes FFmpeg license and third-party notices.
+
+## Third-party software and licensing
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for FFmpeg build and license information. The Windows release includes the LGPL license text beside the application.
 
 ## Reference projects and licensing
 - [Fleasion](https://github.com/fleasion/Fleasion) was reviewed as a reference for texture-pack/asset workflows. Its repository is GPL-3.0; this project does not copy its source code.
