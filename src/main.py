@@ -20,6 +20,20 @@ import nexus_services as services
 APP_NAME = "7TP Nexus Strap"
 
 
+def find_ffmpeg():
+    """Prefer the FFmpeg executable bundled into the packaged Windows app."""
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "ffmpeg" / "ffmpeg.exe")
+    else:
+        candidates.append(Path(__file__).resolve().parents[1] / "vendor" / "ffmpeg" / "ffmpeg.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    # Developer fallback; release builds are expected to include the bundled binary.
+    return shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+
+
 def button(text, callback, primary=False):
     item = QPushButton(text)
     item.setObjectName("primaryButton" if primary else "actionButton")
@@ -238,7 +252,7 @@ class NexusWindow(QMainWindow):
         cl.setContentsMargins(22, 22, 22, 22)
         title = QLabel("Desktop recording")
         title.setObjectName("heroTitle")
-        info = QLabel("Uses FFmpeg's Windows desktop-capture input. This initial recorder captures video only; system/game audio is not recorded.")
+        info = QLabel("Uses the FFmpeg copy bundled with the Windows release. This initial recorder captures video only; system/game audio is not recorded.")
         info.setObjectName("heroCopy")
         info.setWordWrap(True)
         cl.addWidget(title)
@@ -265,7 +279,7 @@ class NexusWindow(QMainWindow):
         controls.addWidget(self.record_button)
         controls.addWidget(self.stop_button)
         cl.addLayout(controls)
-        self.capture_status = QLabel("Ready. FFmpeg must be installed and available on PATH.")
+        self.capture_status = QLabel("Ready. FFmpeg is included in the Windows release; no separate install is needed.")
         self.capture_status.setObjectName("muted")
         self.capture_status.setWordWrap(True)
         cl.addWidget(self.capture_status)
@@ -589,9 +603,9 @@ class NexusWindow(QMainWindow):
     def start_capture(self):
         if self.capture_process and self.capture_process.poll() is None:
             return
-        ffmpeg = shutil.which("ffmpeg")
+        ffmpeg = find_ffmpeg()
         if not ffmpeg:
-            self.show_error("FFmpeg was not found. Install FFmpeg and make sure ffmpeg.exe is available on PATH, then restart Nexus Strap.")
+            self.show_error("The bundled FFmpeg executable was not found. Please download the official Windows build of Nexus Strap again. Developers can also place ffmpeg.exe in vendor/ffmpeg or add FFmpeg to PATH.")
             return
         folder = Path(self.capture_folder.text()).expanduser()
         try:
@@ -600,12 +614,12 @@ class NexusWindow(QMainWindow):
             self.show_error(f"Cannot create output folder: {exc}")
             return
         fps = "60" if self.capture_fps.currentIndex() == 1 else "30"
-        crf = ["18", "23", "28"][self.capture_quality.currentIndex()]
+        quality = ["2", "5", "8"][self.capture_quality.currentIndex()]
         output = folder / f"NexusCapture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         command = [
             ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
             "-f", "gdigrab", "-framerate", fps, "-i", "desktop",
-            "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", crf,
+            "-an", "-c:v", "mpeg4", "-q:v", quality,
             str(output),
         ]
         try:
