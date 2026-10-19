@@ -82,7 +82,19 @@ jobs:
           } else {
             $env:NEXUS_VERSION = "0.1.0-dev"
           }
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DNexusVersion=$env:NEXUS_VERSION" "installer/NexusStrap.iss"
+          $repoRoot = $env:GITHUB_WORKSPACE
+          $scriptPath = Join-Path $repoRoot "installer/NexusStrap.iss"
+          $appDir = Join-Path $repoRoot "dist/7TP Nexus Strap"
+          $outputDir = Join-Path $repoRoot "dist-installer"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $scriptPath)) { throw "Installer script not found: $scriptPath" }
+          if (-not (Test-Path (Join-Path $appDir "7TP Nexus Strap.exe"))) { throw "Packaged app executable not found in: $appDir" }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at: $iscc" }
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+          Write-Host "Installer script: $scriptPath"
+          Write-Host "App directory: $appDir"
+          Write-Host "Output directory: $outputDir"
+          & $iscc "/DNexusVersion=$env:NEXUS_VERSION" $scriptPath
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
       - name: Upload setup EXE artifact
         uses: actions/upload-artifact@v4
