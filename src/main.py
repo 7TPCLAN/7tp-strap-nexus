@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 import psutil
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit,
@@ -169,6 +169,10 @@ class NexusWindow(QMainWindow):
         hl.addWidget(eyebrow)
         hl.addWidget(title)
         hl.addWidget(copy)
+        launch_row = QHBoxLayout()
+        launch_row.addWidget(button("▶  Launch Roblox", self.launch_roblox, True))
+        launch_row.addStretch()
+        hl.addLayout(launch_row)
         layout.addWidget(hero)
 
         section = QLabel("QUICK ACCESS")
@@ -205,6 +209,36 @@ class NexusWindow(QMainWindow):
         layout.addWidget(status_card)
         layout.addStretch()
         return page
+
+    def launch_roblox(self):
+        """Launch the installed Roblox Player, or open Roblox in the default browser."""
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        candidates = []
+        if local_app_data:
+            versions = Path(local_app_data) / "Roblox" / "Versions"
+            if versions.is_dir():
+                candidates = sorted(
+                    versions.glob("version-*/RobloxPlayerBeta.exe"),
+                    key=lambda path: path.stat().st_mtime,
+                    reverse=True,
+                )
+        player = next((path for path in candidates if path.is_file()), None)
+        if player:
+            try:
+                subprocess.Popen([str(player)], cwd=str(player.parent))
+                self.dashboard_status.setText("Roblox Player launch requested.")
+                return
+            except OSError as exc:
+                QMessageBox.warning(
+                    self, "Could not launch Roblox",
+                    f"Roblox Player was found, but Windows could not start it:\\n{exc}\\n\\nOpening the Roblox website instead.",
+                )
+        opened = QDesktopServices.openUrl(QUrl("https://www.roblox.com/home"))
+        if not opened:
+            QMessageBox.warning(
+                self, "Could not open Roblox",
+                "Windows could not open the Roblox website. Check your default browser or Roblox installation.",
+            )
 
     def build_boost(self):
         page = QWidget()
