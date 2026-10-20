@@ -69,6 +69,8 @@ def list_packs() -> list[dict[str, Any]]:
                     "path": str(folder),
                     "assets": int(data.get("assets", 0)),
                     "source": str(data.get("source", "local import")),
+                    "pack_type": str(data.get("pack_type", "textures")),
+                    "rules": int(data.get("rules", 0)),
                 })
             except (OSError, ValueError, TypeError):
                 continue
@@ -149,6 +151,78 @@ def import_pack(source_text: str, requested_name: str) -> dict[str, Any]:
     finally:
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
+
+
+def import_json_pack(source_text: str, requested_name: str = "") -> dict[str, Any]:
+    """Validate and store a Rivals replacement-rules JSON pack without applying it."""
+    ensure_dirs()
+    source = Path(source_text).expanduser().resolve()
+    if not source.is_file() or source.suffix.lower() != ".json":
+        raise ValueError("Choose a .json replacement pack file.")
+    if source.stat().st_size > 10 * 1024 * 1024:
+        raise ValueError("The JSON pack is larger than the 10 MB import limit.")
+    try:
+        data = json.loads(source.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("The pack must be a JSON object.")
+    rules = data.get("replacement_rules")
+    if not isinstance(rules, list):
+        raise ValueError("This JSON does not contain a replacement_rules list.")
+    if not rules:
+        raise ValueError("The replacement_rules list is empty.")
+    if len(rules) > 10000:
+        raise ValueError("This pack contains too many replacement rules (limit 10,000).")
+    for index, rule in enumerate(rules, start=1):
+        if not isinstance(rule, dict):
+            raise ValueError(f"Rule #{index} must be a JSON object.")
+        if "enabled" in rule and not isinstance(rule["enabled"], bool):
+            raise ValueError(f"Rule #{index}: enabled must be true or false.")
+    name_value = requested_name.strip() or str(data.get("name") or data.get("pack_name") or source.stem)
+    name = safe_name(name_value)
+    destination = _unique_destination(PACKS_DIR, name)
+    staging = Path(tempfile.mkdtemp(prefix=".nexus-json-pack-", dir=PACKS_DIR))
+    try:
+        saved_pack = staging / "replacement-pack.json"
+        saved_pack.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        manifest = {
+            "name": name,
+            "assets": 0,
+            "source": "JSON replacement-rules configuration",
+            "pack_type": "json-config",
+            "rules": len(rules),
+            "format_version": 1,
+        }
+        (staging / "nexus-pack.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        staging.rename(destination)
+        enabled = sum(1 for rule in rules if rule.get("enabled", True) is True)
+        return {"name": name, "rules": len(rules), "enabled": enabled, "disabled": len(rules) - enabled, "path": str(destination)}
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def read_json_pack(path_text: str) -> dict[str, Any]:
+    target = Path(path_text).resolve()
+    if target.parent != PACKS_DIR.resolve() or not target.is_dir():
+        raise ValueError("That pack is not inside the Nexus Packs directory.")
+    manifest_path = target / "nexus-pack.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Could not read this pack's manifest.") from exc
+    if manifest.get("pack_type") != "json-config":
+        raise ValueError("Select a JSON replacement-rules pack to inspect its rules.")
+    try:
+        data = json.loads((target / "replacement-pack.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Could not read the saved JSON pack.") from exc
+    rules = data.get("replacement_rules")
+    if not isinstance(rules, list):
+        raise ValueError("Saved pack has an invalid replacement_rules list.")
+    return {"name": manifest.get("name", target.name), "data": data, "rules": rules}
+
 
 
 def delete_pack(path_text: str) -> None:
