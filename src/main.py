@@ -1,3 +1,4 @@
+import ctypes
 import json
 import os
 import shutil
@@ -85,7 +86,7 @@ class NexusWindow(QMainWindow):
         self.page_specs = [
             ("Dashboard", "Your gaming toolkit, in one place."),
             ("Nexus Boost", "Read-only system monitoring."),
-            ("Nexus Capture", "Record your Windows desktop with FFmpeg."),
+            ("Nexus Capture", "Record the Roblox game window with FFmpeg."),
             ("Nexus Packs", "Import and organize local texture assets."),
             ("Nexus Skies", "Create local sky presets from images."),
             ("FastFlag Studio", "Edit and export a JSON settings file."),
@@ -284,9 +285,9 @@ class NexusWindow(QMainWindow):
         card = panel()
         cl = QVBoxLayout(card)
         cl.setContentsMargins(22, 22, 22, 22)
-        title = QLabel("Desktop recording")
+        title = QLabel("Roblox game recording")
         title.setObjectName("heroTitle")
-        info = QLabel("Uses the FFmpeg copy bundled with the Windows release. This initial recorder captures video only; system/game audio is not recorded.")
+        info = QLabel("Captures only the Roblox game window—not your full desktop. Roblox must be open with a visible game window. This build records video only; audio is not recorded.")
         info.setObjectName("heroCopy")
         info.setWordWrap(True)
         cl.addWidget(title)
@@ -330,7 +331,7 @@ class NexusWindow(QMainWindow):
         cl.setContentsMargins(20, 20, 20, 20)
         heading = QLabel("Import a texture pack")
         heading.setObjectName("heroTitle")
-        help_text = QLabel("Import a ZIP or a folder containing supported image/texture files. Nexus stores them in its own data folder and does not automatically patch Roblox.")
+        help_text = QLabel("Import a .json Rivals replacement pack containing a replacement_rules list. Nexus validates and stores the rules locally for review; importing does not apply them to Roblox.")
         help_text.setObjectName("heroCopy")
         help_text.setWordWrap(True)
         cl.addWidget(heading)
@@ -340,12 +341,17 @@ class NexusWindow(QMainWindow):
         self.pack_name.setPlaceholderText("e.g. Purple Rivals Pack")
         cl.addWidget(self.pack_name)
         actions = QHBoxLayout()
-        actions.addWidget(button("Import ZIP…", self.import_pack_zip, True))
-        actions.addWidget(button("Import folder…", self.import_pack_folder))
+        actions.addWidget(button("Import JSON pack…", self.import_pack_json, True))
         cl.addLayout(actions)
         cl.addWidget(QLabel("Imported packs"))
         self.pack_list = QListWidget()
+        self.pack_list.currentItemChanged.connect(self.show_selected_pack_rules)
         cl.addWidget(self.pack_list, 1)
+        cl.addWidget(QLabel("Replacement rules"))
+        self.pack_rules = QPlainTextEdit()
+        self.pack_rules.setReadOnly(True)
+        self.pack_rules.setPlaceholderText("Select an imported JSON pack to inspect its rules.")
+        cl.addWidget(self.pack_rules, 2)
         actions2 = QHBoxLayout()
         actions2.addWidget(button("Open packs folder", self.open_packs_folder))
         actions2.addWidget(button("Delete selected", self.delete_selected_pack))
@@ -482,15 +488,27 @@ class NexusWindow(QMainWindow):
         except Exception as exc:
             self.show_error(str(exc))
 
-    def import_pack_zip(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Choose texture pack ZIP", str(Path.home()), "ZIP archives (*.zip)")
-        if path:
-            self._pack_source(path)
-
-    def import_pack_folder(self):
-        path = QFileDialog.getExistingDirectory(self, "Choose a texture pack folder", str(Path.home()))
-        if path:
-            self._pack_source(path)
+    def import_pack_json(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose Rivals JSON replacement pack", str(Path.home()), "JSON files (*.json)"
+        )
+        if not path:
+            return
+        name = self.pack_name.text().strip() or Path(path).stem
+        try:
+            result = services.import_json_pack(path, name)
+            self.pack_name.clear()
+            self.refresh_packs()
+            QMessageBox.information(
+                self, "JSON pack imported",
+                f"{result['name']} imported successfully.\n"
+                f"Rules: {result['rules']}\nEnabled: {result['enabled']}\n"
+                f"Disabled: {result['disabled']}\n\nStored at:\n{result['path']}\n\n"
+                "This saves the configuration in Nexus; it does not apply changes to Roblox."
+            )
+            self.refresh_stats()
+        except Exception as exc:
+            self.show_error(str(exc))
 
     def refresh_packs(self):
         if not hasattr(self, "pack_list"):
@@ -498,9 +516,31 @@ class NexusWindow(QMainWindow):
         self.pack_list.clear()
         for pack in services.list_packs():
             from PySide6.QtWidgets import QListWidgetItem
-            item = QListWidgetItem(f"{pack['name']}  •  {pack['assets']} files")
+            if pack.get("pack_type") == "json-config":
+                label = f"{pack['name']}  •  {pack.get('rules', 0)} rules"
+            else:
+                label = f"{pack['name']}  •  {pack['assets']} files"
+            item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, pack["path"])
             self.pack_list.addItem(item)
+        if hasattr(self, "pack_rules"):
+            self.pack_rules.clear()
+
+    def show_selected_pack_rules(self, current, previous=None):
+        if not current or not hasattr(self, "pack_rules"):
+            return
+        try:
+            pack = services.read_json_pack(current.data(Qt.ItemDataRole.UserRole))
+            lines = [f"Pack: {pack['name']}", f"Total rules: {len(pack['rules'])}", ""]
+            for index, rule in enumerate(pack["rules"], start=1):
+                enabled = rule.get("enabled", True)
+                state = "ENABLED" if enabled is True else "DISABLED" if enabled is False else "INVALID"
+                lines.append(f"Rule #{index} — {state}")
+                lines.append(json.dumps(rule, indent=2, ensure_ascii=False))
+                lines.append("")
+            self.pack_rules.setPlainText("\n".join(lines))
+        except Exception:
+            self.pack_rules.clear()
 
     def delete_selected_pack(self):
         item = self.pack_list.currentItem()
@@ -634,6 +674,31 @@ class NexusWindow(QMainWindow):
         if path:
             self.capture_folder.setText(path)
 
+    @staticmethod
+    def find_roblox_window_title():
+        """Return the title of a visible Roblox window using the Windows API."""
+        if os.name != "nt":
+            return None
+        user32 = ctypes.windll.user32
+        titles = []
+
+        @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+        def enum_callback(hwnd, _):
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            title = buffer.value.strip()
+            if title and "roblox" in title.lower():
+                titles.append(title)
+            return True
+
+        user32.EnumWindows(enum_callback, 0)
+        return titles[0] if titles else None
+
     def start_capture(self):
         if self.capture_process and self.capture_process.poll() is None:
             return
@@ -650,9 +715,20 @@ class NexusWindow(QMainWindow):
         fps = "60" if self.capture_fps.currentIndex() == 1 else "30"
         quality = ["2", "5", "8"][self.capture_quality.currentIndex()]
         output = folder / f"NexusCapture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        if os.name != "nt":
+            self.show_error("Roblox-window capture is currently supported only on Windows.")
+            return
+        window_title = self.find_roblox_window_title()
+        if not window_title:
+            self.capture_status.setText("Roblox game window not found. Open Roblox and enter a game, then try again.")
+            QMessageBox.information(
+                self, "Roblox not found",
+                "Nexus Capture records only a visible Roblox window. Open Roblox and join a game before starting a recording."
+            )
+            return
         command = [
             ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "gdigrab", "-framerate", fps, "-i", "desktop",
+            "-f", "gdigrab", "-framerate", fps, "-i", f"title={window_title}",
             "-an", "-c:v", "mpeg4", "-q:v", quality,
             str(output),
         ]
