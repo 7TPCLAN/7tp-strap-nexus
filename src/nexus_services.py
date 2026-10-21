@@ -271,6 +271,58 @@ def import_sky(image_paths: list[str], requested_name: str) -> dict[str, str]:
             shutil.rmtree(staging, ignore_errors=True)
 
 
+def apply_sky_to_roblox(path_text: str) -> dict[str, str]:
+    """Apply a saved six-face sky preset with timestamped backups of client files."""
+    ensure_dirs()
+    preset = Path(path_text).resolve()
+    if preset.parent != SKIES_DIR.resolve() or not preset.is_dir():
+        raise ValueError("Select a sky preset inside the Nexus Skies library.")
+    if os.name != "nt":
+        raise ValueError("Applying a sky to Roblox is currently supported only on Windows.")
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
+    versions_root = local_app_data / "Roblox" / "Versions"
+    if not versions_root.is_dir():
+        raise ValueError("Roblox Player was not found. Install or launch Roblox Player first.")
+    candidates = []
+    for version_dir in versions_root.iterdir():
+        player = version_dir / "RobloxPlayerBeta.exe"
+        sky_dir = version_dir / " content" / "textures" / "sky"
+        if version_dir.is_dir() and player.is_file():
+            actual_sky_dir = version_dir / "content" / "textures" / "sky"
+            if actual_sky_dir.is_dir():
+                try:
+                    candidates.append((player.stat().st_mtime, version_dir, actual_sky_dir))
+                except OSError:
+                    continue
+    if not candidates:
+        raise ValueError("Could not find a Roblox Player install with content/textures/sky. Client layout can vary between versions.")
+    _, version_dir, sky_dir = max(candidates, key=lambda item: item[0])
+    faces = ("sky512_bk", "sky512_dn", "sky512_ft", "sky512_lf", "sky512_rt", "sky512_up")
+    for face in faces:
+        source = preset / f"{face}.png"
+        if not source.is_file():
+            raise ValueError(f"This preset is missing {face}.png; no files were changed.")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = APP_DIR / "backups" / "skies" / f"{version_dir.name}_{stamp}"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for face in faces:
+            target = sky_dir / f"{face}.tex"
+            if target.exists():
+                shutil.copy2(target, backup_dir / target.name)
+        for face in faces:
+            shutil.copy2(preset / f"{face}.png", sky_dir / f"{face}.tex")
+    except Exception:
+        # Best-effort rollback if applying any face fails.
+        for face in faces:
+            target = sky_dir / f"{face}.tex"
+            backup = backup_dir / target.name
+            if backup.is_file():
+                shutil.copy2(backup, target)
+        raise
+    return {"version": str(version_dir), "sky_dir": str(sky_dir), "backup": str(backup_dir)}
+
+
 def delete_sky(path_text: str) -> None:
     target = Path(path_text).resolve()
     if target.parent != SKIES_DIR.resolve() or not target.is_dir():
