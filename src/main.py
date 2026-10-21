@@ -91,6 +91,7 @@ class NexusWindow(QMainWindow):
             ("Nexus Skies", "Create local sky presets from images."),
             ("FastFlag Studio", "Edit and export a JSON settings file."),
             ("Nexus Profiles", "Save and reload your Nexus configuration."),
+            ("Nexus Launcher", "Roblox Player, Studio and install status."),
         ]
         for index, (name, _) in enumerate(self.page_specs):
             nav = QPushButton(("⌂   " if index == 0 else "✦   ") + name)
@@ -132,6 +133,7 @@ class NexusWindow(QMainWindow):
         self.pages.addWidget(self.build_skies())
         self.pages.addWidget(self.build_flags())
         self.pages.addWidget(self.build_profiles())
+        self.pages.addWidget(self.build_launcher())
         content_layout.addWidget(self.pages, 1)
         outer.addWidget(content, 1)
         self.setCentralWidget(root)
@@ -212,33 +214,14 @@ class NexusWindow(QMainWindow):
         return page
 
     def launch_roblox(self):
-        """Launch the installed Roblox Player, or open Roblox in the default browser."""
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        candidates = []
-        if local_app_data:
-            versions = Path(local_app_data) / "Roblox" / "Versions"
-            if versions.is_dir():
-                candidates = sorted(
-                    versions.glob("version-*/RobloxPlayerBeta.exe"),
-                    key=lambda path: path.stat().st_mtime,
-                    reverse=True,
-                )
-        player = next((path for path in candidates if path.is_file()), None)
-        if player:
-            try:
-                subprocess.Popen([str(player)], cwd=str(player.parent))
-                self.dashboard_status.setText("Roblox Player launch requested.")
-                return
-            except OSError as exc:
-                QMessageBox.warning(
-                    self, "Could not launch Roblox",
-                    f"Roblox Player was found, but Windows could not start it:\\n{exc}\\n\\nOpening the Roblox website instead.",
-                )
+        """Open Roblox's official home page to launch an experience through its supported web flow."""
         opened = QDesktopServices.openUrl(QUrl("https://www.roblox.com/home"))
-        if not opened:
+        if opened:
+            self.dashboard_status.setText("Opened Roblox Home. Choose an experience and press Play to launch it.")
+        else:
             QMessageBox.warning(
                 self, "Could not open Roblox",
-                "Windows could not open the Roblox website. Check your default browser or Roblox installation.",
+                "Windows could not open Roblox Home. Check your default browser or internet connection.",
             )
 
     def build_boost(self):
@@ -450,6 +433,97 @@ class NexusWindow(QMainWindow):
         layout.addWidget(card, 1)
         return page
 
+    def build_launcher(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+        hero = panel()
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(22, 22, 22, 22)
+        title = QLabel("Roblox Launcher")
+        title.setObjectName("heroTitle")
+        info = QLabel("Open Roblox through its official web flow, check Player and Studio installation status, and launch Studio. Nexus does not inject into Roblox or bypass its security.")
+        info.setObjectName("heroCopy")
+        info.setWordWrap(True)
+        hero_layout.addWidget(title)
+        hero_layout.addWidget(info)
+        hero_layout.addWidget(button("▶  Open Roblox Home", self.launch_roblox, True))
+        layout.addWidget(hero)
+        status_card = panel()
+        status_layout = QVBoxLayout(status_card)
+        status_layout.setContentsMargins(20, 18, 20, 18)
+        status_heading = QLabel("INSTALLATION STATUS")
+        status_heading.setObjectName("eyebrow")
+        status_layout.addWidget(status_heading)
+        self.launcher_player_status = QLabel("Roblox Player: checking…")
+        self.launcher_studio_status = QLabel("Roblox Studio: checking…")
+        self.launcher_running_status = QLabel("Running state: checking…")
+        for label in (self.launcher_player_status, self.launcher_studio_status, self.launcher_running_status):
+            label.setObjectName("muted")
+            label.setWordWrap(True)
+            status_layout.addWidget(label)
+        actions = QHBoxLayout()
+        actions.addWidget(button("Refresh status", self.refresh_launcher_status, True))
+        actions.addWidget(button("Open Player folder", self.open_player_folder))
+        actions.addWidget(button("Launch Studio", self.launch_studio))
+        status_layout.addLayout(actions)
+        layout.addWidget(status_card)
+        note = QLabel("Roblox normally starts a specific experience through its official website/app protocol. Opening RobloxPlayerBeta.exe by itself may not start a game session.")
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        layout.addStretch()
+        return page
+
+    def _roblox_install_paths(self):
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if not local_app_data:
+            return None, None
+        root = Path(local_app_data) / "Roblox" / "Versions"
+        if not root.is_dir():
+            return None, None
+        versions = [p for p in root.glob("version-*") if p.is_dir()]
+        versions.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+        player = next((p / "RobloxPlayerBeta.exe" for p in versions if (p / "RobloxPlayerBeta.exe").is_file()), None)
+        studio = next((p / "RobloxStudioBeta.exe" for p in versions if (p / "RobloxStudioBeta.exe").is_file()), None)
+        return player, studio
+
+    def refresh_launcher_status(self):
+        if not hasattr(self, "launcher_player_status"):
+            return
+        player, studio = self._roblox_install_paths()
+        self.launcher_player_status.setText(f"Roblox Player: found — {player}" if player else "Roblox Player: not found in the standard Windows installation folder.")
+        self.launcher_studio_status.setText(f"Roblox Studio: found — {studio}" if studio else "Roblox Studio: not found in the standard Windows installation folder.")
+        player_running = False
+        studio_running = False
+        try:
+            for proc in psutil.process_iter(["name"]):
+                name = (proc.info.get("name") or "").lower()
+                player_running = player_running or name == "robloxplayerbeta.exe"
+                studio_running = studio_running or name == "robloxstudiobeta.exe"
+        except (psutil.Error, OSError):
+            pass
+        self.launcher_running_status.setText(f"Running state: Player {'running' if player_running else 'not detected'} • Studio {'running' if studio_running else 'not detected'}")
+
+    def open_player_folder(self):
+        player, _ = self._roblox_install_paths()
+        if not player:
+            QMessageBox.information(self, "Roblox Player not found", "Install or launch Roblox Player first, then refresh status.")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(player.parent)))
+
+    def launch_studio(self):
+        _, studio = self._roblox_install_paths()
+        if not studio:
+            QMessageBox.information(self, "Roblox Studio not found", "Roblox Studio was not found in the standard installation folder.")
+            return
+        try:
+            subprocess.Popen([str(studio)], cwd=str(studio.parent))
+            self.refresh_launcher_status()
+        except OSError as exc:
+            QMessageBox.warning(self, "Could not launch Studio", f"Windows could not start Roblox Studio:\\n{exc}")
+
     def open_page(self, index):
         self.pages.setCurrentIndex(index)
         for i, nav in enumerate(self.nav_buttons):
@@ -460,6 +534,8 @@ class NexusWindow(QMainWindow):
             self.load_flags_editor()
         if index == 6:
             self.refresh_profiles()
+        if index == 7:
+            self.refresh_launcher_status()
 
     def refresh_stats(self):
         try:
