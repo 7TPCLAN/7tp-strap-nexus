@@ -382,6 +382,7 @@ class NexusWindow(QMainWindow):
         self.sky_list = QListWidget()
         cl.addWidget(self.sky_list, 1)
         actions = QHBoxLayout()
+        actions.addWidget(button("Apply selected to Roblox…", self.apply_selected_sky, True))
         actions.addWidget(button("Open skies folder", self.open_skies_folder))
         actions.addWidget(button("Delete selected", self.delete_selected_sky))
         cl.addLayout(actions)
@@ -585,6 +586,30 @@ class NexusWindow(QMainWindow):
             item = QListWidgetItem(sky["name"])
             item.setData(Qt.ItemDataRole.UserRole, sky["path"])
             self.sky_list.addItem(item)
+
+    def apply_selected_sky(self):
+        item = self.sky_list.currentItem()
+        if not item:
+            self.show_error("Select a saved sky preset first.")
+            return
+        answer = QMessageBox.warning(
+            self, "Apply sky to Roblox",
+            "This will replace the six sky texture files in your detected Roblox Player installation. "
+            "Nexus will back up existing files first. Roblox updates may overwrite these changes, and unsupported client modifications may stop working. "
+            "Close Roblox before continuing. Apply this preset?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            result = services.apply_sky_to_roblox(item.data(Qt.ItemDataRole.UserRole))
+            QMessageBox.information(
+                self, "Sky applied",
+                f"Copied all six sky faces into the Roblox client and backed up any existing files.\n\nBackup folder:\n{result['backup']}\n\nRestart Roblox to test. Roblox updates can restore the original textures."
+            )
+        except Exception as exc:
+            self.show_error(str(exc))
 
     def delete_selected_sky(self):
         item = self.sky_list.currentItem()
