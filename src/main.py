@@ -397,7 +397,7 @@ class NexusWindow(QMainWindow):
         cl.setContentsMargins(18, 18, 18, 18)
         heading = QLabel("Client settings JSON")
         heading.setObjectName("heroTitle")
-        info = QLabel("Edit a JSON object and save it as a Nexus profile setting, or export it as ClientAppSettings.json yourself. Nexus does not silently modify Roblox files.")
+        info = QLabel("Edit a FastFlags JSON object, save it locally, export it, or apply it to the detected Roblox installation. Nexus creates a backup before applying. Roblox may ignore unsupported or restricted flags.")
         info.setObjectName("heroCopy")
         info.setWordWrap(True)
         cl.addWidget(heading)
@@ -414,6 +414,7 @@ class NexusWindow(QMainWindow):
         actions = QHBoxLayout()
         actions.addWidget(button("Load saved JSON", self.load_flags_editor))
         actions.addWidget(button("Save in Nexus", self.save_flags_editor, True))
+        actions.addWidget(button("Apply to Roblox…", self.apply_flags_to_roblox))
         actions.addWidget(button("Export JSON…", self.export_flags))
         cl.addLayout(actions)
         layout.addWidget(card, 1)
@@ -558,7 +559,7 @@ class NexusWindow(QMainWindow):
     def import_sky_images(self):
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Choose one image or six sky-face images", str(Path.home()),
-            "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"
+            "Sky textures and images (*.tex *.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"
         )
         if not paths:
             return
@@ -620,6 +621,28 @@ class NexusWindow(QMainWindow):
         except Exception as exc:
             self.show_error(str(exc))
 
+    def apply_flags_to_roblox(self):
+        try:
+            data = self._validated_flags()
+            if not data:
+                raise ValueError("The settings JSON is empty. Add the FastFlags you want to apply first.")
+            answer = QMessageBox.question(
+                self, "Apply FastFlags to Roblox",
+                "Nexus Strap will back up the current ClientAppSettings.json (if present), then write your JSON into the detected Roblox installation.\n\n"
+                "Only use flags you trust. Roblox may ignore unsupported or restricted flags. Close Roblox before continuing.\n\nApply these settings now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            target = services.apply_flags_to_roblox(data)
+            QMessageBox.information(
+                self, "FastFlags applied",
+                f"Saved settings to:\n{target}\n\nA backup was made if a previous settings file existed. Restart Roblox for changes to be picked up; Roblox may ignore unsupported flags."
+            )
+        except Exception as exc:
+            self.show_error(str(exc))
+
     def export_flags(self):
         try:
             data = self._validated_flags()
@@ -627,7 +650,7 @@ class NexusWindow(QMainWindow):
             if not path:
                 return
             Path(path).write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-            QMessageBox.information(self, "Export complete", f"Exported JSON to:\n{path}\n\nThis did not automatically change Roblox settings.")
+            QMessageBox.information(self, "Export complete", f"Exported JSON to:\n{path}")
         except Exception as exc:
             self.show_error(str(exc))
 
