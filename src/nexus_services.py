@@ -302,6 +302,43 @@ def save_flags(data: dict[str, Any]) -> None:
     temp.replace(path)
 
 
+def apply_flags_to_roblox(data: dict[str, Any]) -> str:
+    """Write FastFlags JSON to the newest detected Roblox Player install with a backup."""
+    ensure_dirs()
+    if not isinstance(data, dict) or not data:
+        raise ValueError("Provide a non-empty JSON object before applying settings.")
+    if os.name != "nt":
+        raise ValueError("Automatic FastFlag application is currently supported only on Windows.")
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", ""))
+    versions_root = local_app_data / "Roblox" / "Versions"
+    if not versions_root.is_dir():
+        raise ValueError("Roblox was not found in your Windows Local AppData folder. Install Roblox Player first.")
+    candidates = []
+    for version_dir in versions_root.iterdir():
+        if version_dir.is_dir():
+            player = version_dir / "RobloxPlayerBeta.exe"
+            if player.is_file():
+                try:
+                    candidates.append((player.stat().st_mtime, version_dir))
+                except OSError:
+                    continue
+    if not candidates:
+        raise ValueError("Could not find RobloxPlayerBeta.exe in Roblox\\Versions. Launch/install Roblox Player, then try again.")
+    version_dir = max(candidates, key=lambda item: item[0])[1]
+    client_settings = version_dir / "ClientSettings"
+    client_settings.mkdir(parents=True, exist_ok=True)
+    target = client_settings / "ClientAppSettings.json"
+    if target.exists():
+        backup_dir = APP_DIR / "backups" / "fastflags"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(target, backup_dir / f"ClientAppSettings_{stamp}.json")
+    temp = target.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    temp.replace(target)
+    return str(target)
+
+
 def list_profiles() -> list[str]:
     ensure_dirs()
     return sorted(path.stem for path in PROFILES_DIR.glob("*.json") if path.is_file())
