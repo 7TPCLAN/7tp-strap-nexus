@@ -8,7 +8,7 @@ By 7TPCLAN — Developer: ThunderPainYT
 ## Implemented in this build
 - **Dashboard:** quick access and live system summary.
 - **Nexus Boost:** read-only CPU and memory monitoring.
-- **Nexus Capture:** desktop video recording with frame-rate and quality choices. The Windows GitHub Actions build bundles an LGPL FFmpeg executable, so users do not need to install FFmpeg separately or edit PATH. Recording is video-only; system/game audio is not captured yet. The release uses FFmpeg’s native MPEG-4 video encoder.
+- **Nexus Capture:** Roblox video recording with frame-rate and quality choices. The Windows GitHub Actions build bundles an LGPL FFmpeg executable, so users do not need to install FFmpeg separately or edit PATH. Recording is video-only; system/game audio is not captured yet. The release uses FFmpeg’s native MPEG-4 video encoder.
 - **Nexus Packs:** import supported image/texture files from ZIP archives or folders into Nexus-managed storage. ZIP path traversal and archive-size limits are checked. This does not automatically apply packs to Roblox.
 - **Nexus Skies:** create local six-face sky presets from one image or six images; images are resized to 512×512 PNGs. Applying these presets to Roblox is not implemented.
 - **FastFlag Studio:** edit, validate, save and export JSON settings files. Exporting does not automatically modify Roblox files.
