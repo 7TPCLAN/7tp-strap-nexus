@@ -11,6 +11,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -223,6 +224,152 @@ def read_json_pack(path_text: str) -> dict[str, Any]:
         raise ValueError("Saved pack has an invalid replacement_rules list.")
     return {"name": manifest.get("name", target.name), "data": data, "rules": rules}
 
+
+
+
+ACTIVE_PACK_FILE = CONFIG_DIR / "active_texture_pack.json"
+TEXTURE_BACKUPS_DIR = APP_DIR / "backups" / "texture_packs"
+
+
+def active_texture_pack() -> dict[str, Any] | None:
+    ensure_dirs()
+    if not ACTIVE_PACK_FILE.is_file():
+        return None
+    try:
+        data = json.loads(ACTIVE_PACK_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) and data.get("pack_path") else None
+    except (OSError, ValueError):
+        return None
+
+
+def restore_active_texture_pack() -> str:
+    """Restore original files from the active pack backup and remove pack-only files."""
+    active = active_texture_pack()
+    if not active:
+        return "No texture pack is currently active."
+    version_dir = Path(str(active.get("version_dir", ""))).resolve()
+    backup_dir = Path(str(active.get("backup_dir", ""))).resolve()
+    files = active.get("files", [])
+    if not isinstance(files, list) or not version_dir.is_dir():
+        raise ValueError("The active texture-pack record is invalid or the Roblox version folder no longer exists.")
+    texture_root = (version_dir / "content" / "textures").resolve()
+    for entry in files:
+        if not isinstance(entry, dict) or not isinstance(entry.get("relative"), str):
+            continue
+        target = (texture_root / entry["relative"]).resolve()
+        if target != texture_root and texture_root not in target.parents:
+            raise ValueError("A stored texture path escaped the Roblox texture directory; restore stopped for safety.")
+        backup = (backup_dir / entry["relative"]).resolve()
+        if backup != backup_dir and backup_dir not in backup.parents:
+            raise ValueError("A stored backup path is invalid; restore stopped for safety.")
+        if entry.get("original_exists") and backup.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup, target)
+        else:
+            target.unlink(missing_ok=True)
+    ACTIVE_PACK_FILE.unlink(missing_ok=True)
+    return f"Restored the original Roblox textures for {active.get('pack_name', 'the active pack')}."
+
+
+def apply_texture_pack(path_text: str) -> dict[str, str]:
+    """Apply a texture asset pack under Roblox content/textures with backups and rollback metadata.
+
+    This is best-effort: filenames and formats must match Roblox's current client assets.
+    JSON replacement-rule packs are not texture packs and cannot be applied by this function.
+    """
+    ensure_dirs()
+    pack_dir = Path(path_text).resolve()
+    if pack_dir.parent != PACKS_DIR.resolve() or not pack_dir.is_dir():
+        raise ValueError("Select a texture pack inside the Nexus Packs library.")
+    try:
+        manifest = json.loads((pack_dir / "nexus-pack.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("Could not read this pack's manifest.") from exc
+    if manifest.get("pack_type") == "json-config":
+        raise ValueError("This is a Rivals replacement-rules JSON pack, not a texture asset pack.")
+    assets = []
+    for source in pack_dir.rglob("*"):
+        if not source.is_file() or source.is_symlink() or source.name == "nexus-pack.json":
+            continue
+        if source.suffix.lower() not in PACK_EXTENSIONS:
+            continue
+        relative = source.relative_to(pack_dir)
+        parts = list(relative.parts)
+        lower_parts = [part.lower() for part in parts]
+        if lower_parts[:2] == ["content", "textures"]:
+            parts = parts[2:]
+        elif lower_parts and lower_parts[0] == "textures":
+            parts = parts[1:]
+        if parts:
+            assets.append((source, Path(*parts)))
+    if not assets:
+        raise ValueError("This pack contains no supported texture files.")
+    if os.name != "nt":
+        raise ValueError("Applying texture files is supported only on Windows.")
+    versions_root = Path(os.environ.get("LOCALAPPDATA", "")) / "Roblox" / "Versions"
+    candidates = []
+    if versions_root.is_dir():
+        for version in versions_root.iterdir():
+            player = version / "RobloxPlayerBeta.exe"
+            texture_root = version / "content" / "textures"
+            if version.is_dir() and player.is_file() and texture_root.is_dir():
+                try:
+                    candidates.append((player.stat().st_mtime, version, texture_root))
+                except OSError:
+                    continue
+    if not candidates:
+        raise ValueError("Could not find a Roblox Player installation with a content/textures folder.")
+    _, version_dir, texture_root = max(candidates, key=lambda item: item[0])
+    normalized = []
+    for source, relative in assets:
+        target = (texture_root / relative).resolve()
+        if target == texture_root.resolve() or texture_root.resolve() not in target.parents:
+            raise ValueError(f"Unsafe texture path in pack: {relative}")
+        normalized.append((source, relative, target))
+    # Switching packs always restores the previous managed pack first.
+    restore_active_texture_pack()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = TEXTURE_BACKUPS_DIR / f"{version_dir.name}_{slug(manifest.get('name', pack_dir.name))}_{stamp}"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    record_files = []
+    try:
+        for source, relative, target in normalized:
+            existed = target.is_file()
+            record_files.append({"relative": relative.as_posix(), "original_exists": existed})
+            if existed:
+                backup = backup_dir / relative
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup)
+        for source, relative, target in normalized:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        record = {
+            "pack_name": str(manifest.get("name", pack_dir.name)),
+            "pack_path": str(pack_dir),
+            "version_dir": str(version_dir),
+            "backup_dir": str(backup_dir),
+            "files": record_files,
+            "applied_at": stamp,
+        }
+        temp = ACTIVE_PACK_FILE.with_suffix(".tmp")
+        temp.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        temp.replace(ACTIVE_PACK_FILE)
+    except Exception:
+        for entry in record_files:
+            target = (texture_root / entry["relative"]).resolve()
+            backup = (backup_dir / entry["relative"]).resolve()
+            if entry["original_exists"] and backup.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(backup, target)
+            elif not entry["original_exists"]:
+                target.unlink(missing_ok=True)
+        raise
+    return {
+        "name": str(manifest.get("name", pack_dir.name)),
+        "version": str(version_dir),
+        "backup": str(backup_dir),
+        "files": str(len(normalized)),
+    }
 
 
 def delete_pack(path_text: str) -> None:
