@@ -225,9 +225,9 @@ class NexusWindow(QMainWindow):
         summary.append("apply the selected texture pack with backups" if pack_path else "restore any texture pack managed by Nexus")
         answer = QMessageBox.warning(
             self, "Prepare Roblox launch",
-            "Nexus will prepare this setup before opening Roblox:\\n\\n" +
-            "\\n".join(f"• {item}" for item in summary) +
-            "\\n\\nCustom client-file changes may be incompatible with Roblox updates or its rules. "
+            "Nexus will prepare this setup before opening Roblox:\n\n" +
+            "\n".join(f"• {item}" for item in summary) +
+            "\n\nCustom client-file changes may be incompatible with Roblox updates or its rules. "
             "Backups do not guarantee that a customization works or that an account is safe. "
             "Close Roblox before continuing. Continue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -583,7 +583,7 @@ class NexusWindow(QMainWindow):
             subprocess.Popen([str(studio)], cwd=str(studio.parent))
             self.refresh_launcher_status()
         except OSError as exc:
-            QMessageBox.warning(self, "Could not launch Studio", f"Windows could not start Roblox Studio:\\n{exc}")
+            QMessageBox.warning(self, "Could not launch Studio", f"Windows could not start Roblox Studio:\n{exc}")
 
     def open_page(self, index):
         self.pages.setCurrentIndex(index)
@@ -722,7 +722,7 @@ class NexusWindow(QMainWindow):
             result = services.apply_texture_pack(path)
             self.refresh_launcher_options()
             QMessageBox.information(self, "Texture pack activated",
-                f"Prepared {result['name']} ({result['files']} file(s)).\\n\\nBackup folder:\\n{result['backup']}\\n\\nRestart Roblox to test. This confirms files were copied, not that Roblox will render them.")
+                f"Prepared {result['name']} ({result['files']} file(s)).\n\nBackup folder:\n{result['backup']}\n\nRestart Roblox to test. This confirms files were copied, not that Roblox will render them.")
         except Exception as exc:
             self.show_error(str(exc))
 
