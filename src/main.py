@@ -355,7 +355,7 @@ class NexusWindow(QMainWindow):
         cl.setContentsMargins(20, 20, 20, 20)
         heading = QLabel("Import a texture pack")
         heading.setObjectName("heroTitle")
-        help_text = QLabel("Import a .json Rivals replacement pack containing a replacement_rules list. Nexus validates and stores the rules locally for review; importing does not apply them to Roblox.")
+        help_text = QLabel("Import texture assets from a ZIP or folder, then activate one pack or select it in Nexus Launcher. Nexus backs up matching original files and can restore them. JSON Rivals replacement-rule packs are stored for review only and are not applied as Roblox textures.")
         help_text.setObjectName("heroCopy")
         help_text.setWordWrap(True)
         cl.addWidget(heading)
