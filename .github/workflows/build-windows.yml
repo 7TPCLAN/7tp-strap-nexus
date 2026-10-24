@@ -7,6 +7,7 @@ on:
     tags: ["v*"]
     paths:
       - "src/**"
+      - "assets/**"
       - "requirements.txt"
       - "README.md"
       - "THIRD_PARTY_NOTICES.md"
@@ -51,12 +52,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-      - name: Build app with bundled FFmpeg
+      - name: Generate Windows icon
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtCore import Qt
+          from PySide6.QtGui import QImage, QPainter
+          from PySide6.QtSvg import QSvgRenderer
+          from PIL import Image
+          png = Path('assets/nexus-icon.png')
+          image = QImage(256, 256, QImage.Format.Format_ARGB32)
+          image.fill(Qt.GlobalColor.transparent)
+          painter = QPainter(image)
+          renderer = QSvgRenderer('assets/nexus-icon.svg')
+          if not renderer.isValid(): raise SystemExit('Invalid SVG icon')
+          renderer.render(painter)
+          painter.end()
+          image.save(str(png), 'PNG')
+          with Image.open(png) as rendered:
+              rendered.save('assets/nexus-icon.ico', format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
+          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/generate_nexus_icon.py"
+          python "$env:RUNNER_TEMP/generate_nexus_icon.py"
+      - name: Build app with bundled FFmpeg and branding
         shell: pwsh
         run: |
           $pyiArgs = @(
             "--noconfirm", "--clean", "--windowed",
             "--name", "7TP Nexus Strap",
+            "--icon", "assets/nexus-icon.ico",
+            "--add-data", "assets/nexus-logo.svg;assets",
+            "--add-data", "assets/nexus-icon.svg;assets",
             "--add-binary", "vendor/ffmpeg/ffmpeg.exe;ffmpeg",
             "src/main.py"
           )
