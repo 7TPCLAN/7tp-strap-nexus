@@ -11,7 +11,7 @@ import psutil
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
+    QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit,
     QProgressBar, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 )
@@ -147,6 +147,7 @@ class NexusWindow(QMainWindow):
         self.refresh_packs()
         self.refresh_skies()
         self.refresh_profiles()
+        self.refresh_launcher_options()
 
         self.capture_timer = QTimer(self)
         self.capture_timer.timeout.connect(self.check_capture)
@@ -214,15 +215,55 @@ class NexusWindow(QMainWindow):
         return page
 
     def launch_roblox(self):
-        """Open Roblox's official home page to launch an experience through its supported web flow."""
-        opened = QDesktopServices.openUrl(QUrl("https://www.roblox.com/home"))
-        if opened:
-            self.dashboard_status.setText("Opened Roblox Home. Choose an experience and press Play to launch it.")
-        else:
-            QMessageBox.warning(
-                self, "Could not open Roblox",
-                "Windows could not open Roblox Home. Check your default browser or internet connection.",
+        """Prepare the selected local customizations, then open Roblox's official web launch flow."""
+        pack_path = (self.launcher_pack_combo.currentData() or "") if hasattr(self, "launcher_pack_combo") else ""
+        profile_id = (self.launcher_profile_combo.currentData() or "") if hasattr(self, "launcher_profile_combo") else ""
+        use_flags = bool(hasattr(self, "launcher_use_flags") and self.launcher_use_flags.isChecked())
+        summary = []
+        if use_flags:
+            summary.append("apply the selected FastFlags JSON (Roblox may ignore unsupported flags)")
+        summary.append("apply the selected texture pack with backups" if pack_path else "restore any texture pack managed by Nexus")
+        answer = QMessageBox.warning(
+            self, "Prepare Roblox launch",
+            "Nexus will prepare this setup before opening Roblox:\\n\\n" +
+            "\\n".join(f"• {item}" for item in summary) +
+            "\\n\\nCustom client-file changes may be incompatible with Roblox updates or its rules. "
+            "Backups do not guarantee that a customization works or that an account is safe. "
+            "Close Roblox before continuing. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            player_running = any(
+                (proc.info.get("name") or "").lower() == "robloxplayerbeta.exe"
+                for proc in psutil.process_iter(["name"])
             )
+            if player_running and (use_flags or pack_path or services.active_texture_pack()):
+                raise ValueError("Roblox Player is still running. Close Roblox completely, then try again so Nexus can safely prepare the selected files.")
+            if use_flags:
+                flags = services.load_profile(profile_id)["client_flags"] if profile_id else services.load_flags()
+                if flags:
+                    services.apply_flags_to_roblox(flags)
+                else:
+                    QMessageBox.information(self, "No FastFlags", "The selected FastFlags configuration is empty, so no settings file was written.")
+            if pack_path:
+                result = services.apply_texture_pack(pack_path)
+                self.dashboard_status.setText(f"Texture pack '{result['name']}' prepared ({result['files']} files). Backup: {result['backup']}")
+            else:
+                services.restore_active_texture_pack()
+            if QDesktopServices.openUrl(QUrl("https://www.roblox.com/home")):
+                message = "Setup prepared. Roblox Home opened — choose an experience and press Play. Restart Roblox first if it was already running."
+                self.dashboard_status.setText(message)
+                if hasattr(self, "launcher_custom_status"):
+                    self.launcher_custom_status.setText(message)
+                self.refresh_launcher_status()
+                self.refresh_launcher_options()
+            else:
+                QMessageBox.warning(self, "Could not open Roblox", "Customizations were prepared, but Windows could not open Roblox Home. Check your browser or internet connection.")
+        except Exception as exc:
+            self.show_error(f"Could not prepare the selected Roblox customizations: {exc}")
 
     def build_boost(self):
         page = QWidget()
@@ -335,6 +376,10 @@ class NexusWindow(QMainWindow):
         self.pack_rules.setReadOnly(True)
         self.pack_rules.setPlaceholderText("Select an imported JSON pack to inspect its rules.")
         cl.addWidget(self.pack_rules, 2)
+        actions = QHBoxLayout()
+        actions.addWidget(button("Activate selected texture pack…", self.activate_selected_pack, True))
+        actions.addWidget(button("Restore original textures", self.restore_texture_pack))
+        cl.addLayout(actions)
         actions2 = QHBoxLayout()
         actions2.addWidget(button("Open packs folder", self.open_packs_folder))
         actions2.addWidget(button("Delete selected", self.delete_selected_pack))
@@ -443,12 +488,28 @@ class NexusWindow(QMainWindow):
         hero_layout.setContentsMargins(22, 22, 22, 22)
         title = QLabel("Roblox Launcher")
         title.setObjectName("heroTitle")
-        info = QLabel("Open Roblox through its official web flow, check Player and Studio installation status, and launch Studio. Nexus does not inject into Roblox or bypass its security.")
+        info = QLabel("Choose FastFlags and a texture pack, prepare local customizations with backups, then open Roblox through its official web launch flow. Unsupported flags or texture formats may be ignored or fail.")
         info.setObjectName("heroCopy")
         info.setWordWrap(True)
         hero_layout.addWidget(title)
         hero_layout.addWidget(info)
-        hero_layout.addWidget(button("▶  Open Roblox Home", self.launch_roblox, True))
+        hero_layout.addWidget(QLabel("FastFlags profile"))
+        self.launcher_profile_combo = QComboBox()
+        hero_layout.addWidget(self.launcher_profile_combo)
+        self.launcher_use_flags = QCheckBox("Apply FastFlags on launch (unchecked = leave current Roblox settings untouched)")
+        try:
+            self.launcher_use_flags.setChecked(bool(services.load_flags()))
+        except Exception:
+            self.launcher_use_flags.setChecked(False)
+        hero_layout.addWidget(self.launcher_use_flags)
+        hero_layout.addWidget(QLabel("Texture pack"))
+        self.launcher_pack_combo = QComboBox()
+        hero_layout.addWidget(self.launcher_pack_combo)
+        hero_layout.addWidget(button("▶  Launch Roblox with selected setup", self.launch_roblox, True))
+        self.launcher_custom_status = QLabel("Choose your configuration, then launch. Roblox opens through its official website flow.")
+        self.launcher_custom_status.setObjectName("muted")
+        self.launcher_custom_status.setWordWrap(True)
+        hero_layout.addWidget(self.launcher_custom_status)
         layout.addWidget(hero)
         status_card = panel()
         status_layout = QVBoxLayout(status_card)
@@ -603,6 +664,75 @@ class NexusWindow(QMainWindow):
             self.pack_list.addItem(item)
         if hasattr(self, "pack_rules"):
             self.pack_rules.clear()
+        self.refresh_launcher_options()
+
+    def refresh_launcher_options(self):
+        if hasattr(self, "launcher_pack_combo"):
+            selected = self.launcher_pack_combo.currentData()
+            self.launcher_pack_combo.blockSignals(True)
+            self.launcher_pack_combo.clear()
+            self.launcher_pack_combo.addItem("No texture pack (restore active pack)", "")
+            for pack in services.list_packs():
+                if pack.get("pack_type") != "json-config":
+                    self.launcher_pack_combo.addItem(f"{pack['name']} • {pack['assets']} files", pack["path"])
+            index = self.launcher_pack_combo.findData(selected)
+            self.launcher_pack_combo.setCurrentIndex(index if index >= 0 else 0)
+            self.launcher_pack_combo.blockSignals(False)
+        if hasattr(self, "launcher_profile_combo"):
+            selected = self.launcher_profile_combo.currentData()
+            self.launcher_profile_combo.blockSignals(True)
+            self.launcher_profile_combo.clear()
+            self.launcher_profile_combo.addItem("Current saved FastFlags", "")
+            for profile_id in services.list_profiles():
+                try:
+                    self.launcher_profile_combo.addItem(services.load_profile(profile_id)["name"], profile_id)
+                except Exception:
+                    continue
+            index = self.launcher_profile_combo.findData(selected)
+            self.launcher_profile_combo.setCurrentIndex(index if index >= 0 else 0)
+            self.launcher_profile_combo.blockSignals(False)
+        if hasattr(self, "launcher_pack_status"):
+            active = services.active_texture_pack()
+            self.launcher_pack_status.setText(f"Active texture pack: {active.get('pack_name')}" if active else "Active texture pack: none")
+
+    def activate_selected_pack(self):
+        item = self.pack_list.currentItem()
+        if not item:
+            self.show_error("Select an imported texture asset pack first. JSON replacement-rule packs cannot be applied as textures.")
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        try:
+            manifest = json.loads((Path(path) / "nexus-pack.json").read_text(encoding="utf-8"))
+            if manifest.get("pack_type") == "json-config":
+                raise ValueError("This is a JSON replacement-rules configuration, not a texture asset pack.")
+        except Exception as exc:
+            self.show_error(str(exc))
+            return
+        answer = QMessageBox.warning(
+            self, "Activate texture pack",
+            "Nexus will copy matching files into Roblox's content/textures folder and back up originals. "
+            "File names and formats must match Roblox's expected assets; not every pack will work. "
+            "This may conflict with Roblox updates or rules. Close Roblox before continuing. Activate?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            result = services.apply_texture_pack(path)
+            self.refresh_launcher_options()
+            QMessageBox.information(self, "Texture pack activated",
+                f"Prepared {result['name']} ({result['files']} file(s)).\\n\\nBackup folder:\\n{result['backup']}\\n\\nRestart Roblox to test. This confirms files were copied, not that Roblox will render them.")
+        except Exception as exc:
+            self.show_error(str(exc))
+
+    def restore_texture_pack(self):
+        try:
+            message = services.restore_active_texture_pack()
+            self.refresh_launcher_options()
+            QMessageBox.information(self, "Texture pack restored", message)
+        except Exception as exc:
+            self.show_error(str(exc))
 
     def show_selected_pack_rules(self, current, previous=None):
         if not current or not hasattr(self, "pack_rules"):
@@ -624,10 +754,14 @@ class NexusWindow(QMainWindow):
         item = self.pack_list.currentItem()
         if not item:
             return
+        pack_path = item.data(Qt.ItemDataRole.UserRole)
         if QMessageBox.question(self, "Delete pack", f"Delete '{item.text()}' from Nexus storage?") != QMessageBox.StandardButton.Yes:
             return
         try:
-            services.delete_pack(item.data(Qt.ItemDataRole.UserRole))
+            active = services.active_texture_pack()
+            if active and Path(active.get("pack_path", "")).resolve() == Path(pack_path).resolve():
+                services.restore_active_texture_pack()
+            services.delete_pack(pack_path)
             self.refresh_packs()
             self.refresh_stats()
         except Exception as exc:
@@ -764,6 +898,7 @@ class NexusWindow(QMainWindow):
             item = QListWidgetItem(profile)
             item.setData(Qt.ItemDataRole.UserRole, profile)
             self.profile_list.addItem(item)
+        self.refresh_launcher_options()
 
     def save_profile(self):
         try:
