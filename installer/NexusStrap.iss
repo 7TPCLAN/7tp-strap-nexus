@@ -14,6 +14,7 @@ OutputBaseFilename=7TP-Nexus-Strap-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\assets\nexus-icon.ico
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\7TP Nexus Strap.exe
