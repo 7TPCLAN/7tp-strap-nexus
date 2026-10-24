@@ -9,7 +9,7 @@ from pathlib import Path
 
 import psutil
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QFont
+from PySide6.QtGui import QDesktopServices, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit,
@@ -19,6 +19,12 @@ from PySide6.QtWidgets import (
 import nexus_services as services
 
 APP_NAME = "7TP Nexus Strap"
+
+
+def resource_path(relative_path):
+    """Resolve bundled assets in development and PyInstaller builds."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1]))
+    return base / relative_path
 
 
 def find_ffmpeg():
@@ -57,6 +63,7 @@ class NexusWindow(QMainWindow):
         self.capture_log = None
         self.nav_buttons = []
         self.setWindowTitle(APP_NAME)
+        self.setWindowIcon(QIcon(str(resource_path("assets/nexus-icon.svg"))))
         self.resize(1160, 760)
         self.setMinimumSize(900, 620)
 
@@ -71,8 +78,10 @@ class NexusWindow(QMainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(18, 24, 18, 18)
         side.setSpacing(8)
-        logo = QLabel("7TP")
-        logo.setObjectName("logo")
+        logo = QLabel()
+        logo.setObjectName("logoImage")
+        logo.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        logo.setPixmap(QIcon(str(resource_path("assets/nexus-logo.svg"))).pixmap(190, 64))
         brand = QLabel("NEXUS STRAP")
         brand.setObjectName("brand")
         tagline = QLabel("PLAY. CREATE. OPTIMIZE.")
