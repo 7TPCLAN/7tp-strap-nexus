@@ -34,6 +34,37 @@ MAX_IMAGE_PIXELS = 16_777_216
 def ensure_dirs() -> None:
     for folder in (PACKS_DIR, SKIES_DIR, PROFILES_DIR, CONFIG_DIR):
         folder.mkdir(parents=True, exist_ok=True)
+    rules_path = CONFIG_DIR / "launcher_rules.json"
+    if not rules_path.exists():
+        rules_path.write_text(
+            json.dumps({
+                "format_version": 1,
+                "launch_uri": "roblox://",
+                "fallback_to_player_exe": True,
+                "description": "Nexus launcher behavior. Use the Roblox app protocol; never open the Roblox website automatically."
+            }, indent=2),
+            encoding="utf-8",
+        )
+
+
+def load_launcher_rules() -> dict[str, Any]:
+    """Load the app's JSON launch rules and validate allowed launch targets."""
+    ensure_dirs()
+    rules_path = CONFIG_DIR / "launcher_rules.json"
+    try:
+        data = json.loads(rules_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read launcher_rules.json: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("launcher_rules.json must contain a JSON object.")
+    launch_uri = data.get("launch_uri", "roblox://")
+    # Restrict the configurable URI to Roblox-owned app protocols, not arbitrary websites or commands.
+    if launch_uri not in ("roblox://", "roblox-player:"):
+        raise ValueError("launcher_rules.json launch_uri must be 'roblox://' or 'roblox-player:'.")
+    fallback = data.get("fallback_to_player_exe", True)
+    if not isinstance(fallback, bool):
+        raise ValueError("launcher_rules.json fallback_to_player_exe must be true or false.")
+    return {"launch_uri": launch_uri, "fallback_to_player_exe": fallback}
 
 
 def safe_name(value: str) -> str:
