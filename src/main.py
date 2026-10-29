@@ -224,7 +224,7 @@ class NexusWindow(QMainWindow):
         return page
 
     def launch_roblox(self):
-        """Prepare the selected local customizations, then open Roblox's official web launch flow."""
+        """Prepare selected JSON-driven settings, then launch Roblox through its app protocol."""
         pack_path = (self.launcher_pack_combo.currentData() or "") if hasattr(self, "launcher_pack_combo") else ""
         profile_id = (self.launcher_profile_combo.currentData() or "") if hasattr(self, "launcher_profile_combo") else ""
         use_flags = bool(hasattr(self, "launcher_use_flags") and self.launcher_use_flags.isChecked())
@@ -233,8 +233,8 @@ class NexusWindow(QMainWindow):
             summary.append("apply the selected FastFlags JSON (Roblox may ignore unsupported flags)")
         summary.append("apply the selected texture pack with backups" if pack_path else "restore any texture pack managed by Nexus")
         answer = QMessageBox.warning(
-            self, "Prepare Roblox launch",
-            "Nexus will prepare this setup before opening Roblox:\n\n" +
+            self, "Prepare and launch Roblox",
+            "Nexus will prepare this setup, then launch the Roblox app directly:\n\n" +
             "\n".join(f"• {item}" for item in summary) +
             "\n\nCustom client-file changes may be incompatible with Roblox updates or its rules. "
             "Backups do not guarantee that a customization works or that an account is safe. "
@@ -262,17 +262,28 @@ class NexusWindow(QMainWindow):
                 self.dashboard_status.setText(f"Texture pack '{result['name']}' prepared ({result['files']} files). Backup: {result['backup']}")
             else:
                 services.restore_active_texture_pack()
-            if QDesktopServices.openUrl(QUrl("https://www.roblox.com/home")):
-                message = "Setup prepared. Roblox Home opened — choose an experience and press Play. Restart Roblox first if it was already running."
-                self.dashboard_status.setText(message)
-                if hasattr(self, "launcher_custom_status"):
-                    self.launcher_custom_status.setText(message)
-                self.refresh_launcher_status()
-                self.refresh_launcher_options()
-            else:
-                QMessageBox.warning(self, "Could not open Roblox", "Customizations were prepared, but Windows could not open Roblox Home. Check your browser or internet connection.")
+
+            rules = services.load_launcher_rules()
+            launch_uri = rules["launch_uri"]
+            opened = QDesktopServices.openUrl(QUrl(launch_uri))
+            if not opened and rules["fallback_to_player_exe"]:
+                player, _ = self._roblox_install_paths()
+                if player:
+                    subprocess.Popen([str(player)], cwd=str(player.parent))
+                    opened = True
+            if not opened:
+                raise ValueError(
+                    "Windows could not open the Roblox app protocol, and no direct Player fallback was available. "
+                    "Install or repair Roblox Player, then try again."
+                )
+            message = "Setup prepared. Launch request sent directly to Roblox (no website opened). If Roblox does not enter an experience, choose one inside the Roblox app."
+            self.dashboard_status.setText(message)
+            if hasattr(self, "launcher_custom_status"):
+                self.launcher_custom_status.setText(message)
+            self.refresh_launcher_status()
+            self.refresh_launcher_options()
         except Exception as exc:
-            self.show_error(f"Could not prepare the selected Roblox customizations: {exc}")
+            self.show_error(f"Could not prepare or launch Roblox: {exc}")
 
     def build_boost(self):
         page = QWidget()
@@ -497,7 +508,7 @@ class NexusWindow(QMainWindow):
         hero_layout.setContentsMargins(22, 22, 22, 22)
         title = QLabel("Roblox Launcher")
         title.setObjectName("heroTitle")
-        info = QLabel("Choose FastFlags and a texture pack, prepare local customizations with backups, then open Roblox through its official web launch flow. Unsupported flags or texture formats may be ignored or fail.")
+        info = QLabel("Choose JSON-based FastFlags/profile rules and an optional texture pack, prepare local customizations with backups, then launch Roblox directly through its app protocol. Unsupported flags or texture formats may be ignored or fail.")
         info.setObjectName("heroCopy")
         info.setWordWrap(True)
         hero_layout.addWidget(title)
@@ -515,7 +526,7 @@ class NexusWindow(QMainWindow):
         self.launcher_pack_combo = QComboBox()
         hero_layout.addWidget(self.launcher_pack_combo)
         hero_layout.addWidget(button("▶  Launch Roblox with selected setup", self.launch_roblox, True))
-        self.launcher_custom_status = QLabel("Choose your configuration, then launch. Roblox opens through its official website flow.")
+        self.launcher_custom_status = QLabel("Choose your JSON configuration, then launch Roblox directly. Nexus does not open the Roblox website.")
         self.launcher_custom_status.setObjectName("muted")
         self.launcher_custom_status.setWordWrap(True)
         hero_layout.addWidget(self.launcher_custom_status)
@@ -539,7 +550,7 @@ class NexusWindow(QMainWindow):
         actions.addWidget(button("Launch Studio", self.launch_studio))
         status_layout.addLayout(actions)
         layout.addWidget(status_card)
-        note = QLabel("Roblox normally starts a specific experience through its official website/app protocol. Opening RobloxPlayerBeta.exe by itself may not start a game session.")
+        note = QLabel("The launch URI is read from launcher_rules.json. The app-protocol launch may open Roblox without joining a specific experience; direct EXE fallback is used only if the protocol cannot be opened.")
         note.setObjectName("muted")
         note.setWordWrap(True)
         layout.addWidget(note)
