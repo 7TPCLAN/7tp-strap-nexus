@@ -12,7 +12,7 @@ By 7TPCLAN — Developer: ThunderPainYT
 - **Nexus Packs:** import supported image/texture files from ZIP archives or folders into Nexus-managed storage. ZIP path traversal and archive-size limits are checked. This does not automatically apply packs to Roblox.
 - **Nexus Skies:** create local six-face sky presets from one image or six images; images are resized to 512×512 PNGs. Applying these presets to Roblox is not implemented.
 - **FastFlag Studio:** edit, validate, save and export JSON settings files. Exporting does not automatically modify Roblox files.
-- **Nexus Profiles:** save and reload named JSON configurations.
+- **Nexus Profiles:** save and reload named JSON configurations. The launcher also reads `launcher_rules.json` from the app configuration folder to choose a Roblox app-protocol launch and whether to fall back to the installed Player executable.
 
 ## Run locally
 1. Install Python 3.10 or newer.
@@ -32,4 +32,4 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for FFmpeg build and licens
 Nexus Strap is an independent implementation. Compatibility varies by game and platform. It does not bypass anti-cheat or promise unsupported game-file modifications.
 
 ## Current limitations
-This is an early functional foundation, not a finished replacement for either reference project. Roblox-specific pack application, launcher replacement, automatic FastFlag installation, game patching, audio capture, update delivery and in-app crash reporting are not implemented.
+This is an early functional foundation, not a finished replacement for either reference project. Rivals replacement-rule JSON files can currently be imported, validated and inspected, but are not automatically applied because their mapping format is not yet connected to Roblox asset files. The launcher now requests the Roblox app protocol (`roblox://`) instead of opening Roblox Home in a browser; the protocol may open the app without joining a specific experience. Launcher rules are stored in `launcher_rules.json` under the Nexus app configuration directory. Launcher replacement, audio capture, update delivery and in-app crash reporting are not implemented.
