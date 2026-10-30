@@ -375,7 +375,7 @@ class NexusWindow(QMainWindow):
         cl.setContentsMargins(20, 20, 20, 20)
         heading = QLabel("Import a texture pack")
         heading.setObjectName("heroTitle")
-        help_text = QLabel("Import texture assets from a ZIP or folder, then activate one pack or select it in Nexus Launcher. Nexus backs up matching original files and can restore them. JSON Rivals replacement-rule packs are stored for review only and are not applied as Roblox textures.")
+        help_text = QLabel("Import a JSON texture pack containing replacement_rules. Nexus validates and stores its rules, including enabled and disabled states. ZIP, RAR, and folder imports are not supported. Applying in-game replacements requires a compatible asset-replacement engine.")
         help_text.setObjectName("heroCopy")
         help_text.setWordWrap(True)
         cl.addWidget(heading)
@@ -397,7 +397,7 @@ class NexusWindow(QMainWindow):
         self.pack_rules.setPlaceholderText("Select an imported JSON pack to inspect its rules.")
         cl.addWidget(self.pack_rules, 2)
         actions = QHBoxLayout()
-        actions.addWidget(button("Activate selected texture pack…", self.activate_selected_pack, True))
+        actions.addWidget(button("Inspect selected JSON pack", self.activate_selected_pack, True))
         actions.addWidget(button("Restore original textures", self.restore_texture_pack))
         cl.addLayout(actions)
         actions2 = QHBoxLayout()
@@ -634,22 +634,9 @@ class NexusWindow(QMainWindow):
         except Exception as exc:
             self.dashboard_status.setText(f"System statistics unavailable: {exc}")
 
-    def _pack_source(self, source):
-        name = self.pack_name.text().strip()
-        if not name:
-            name = Path(source).stem if Path(source).is_file() else Path(source).name
-        try:
-            result = services.import_pack(source, name)
-            self.pack_name.clear()
-            self.refresh_packs()
-            QMessageBox.information(self, "Pack imported", f"{result['name']} imported with {result['assets']} supported file(s).\n\nStored at:\n{result['path']}")
-            self.refresh_stats()
-        except Exception as exc:
-            self.show_error(str(exc))
-
     def import_pack_json(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "Choose Rivals JSON replacement pack", str(Path.home()), "JSON files (*.json)"
+            self, "Choose JSON texture pack", str(Path.home()), "JSON files (*.json)"
         )
         if not path:
             return
@@ -663,7 +650,7 @@ class NexusWindow(QMainWindow):
                 f"{result['name']} imported successfully.\n"
                 f"Rules: {result['rules']}\nEnabled: {result['enabled']}\n"
                 f"Disabled: {result['disabled']}\n\nStored at:\n{result['path']}\n\n"
-                "This saves the configuration in Nexus; it does not apply changes to Roblox."
+                "The JSON rules are stored locally; in-game replacement is not yet implemented."
             )
             self.refresh_stats()
         except Exception as exc:
@@ -718,13 +705,13 @@ class NexusWindow(QMainWindow):
     def activate_selected_pack(self):
         item = self.pack_list.currentItem()
         if not item:
-            self.show_error("Select an imported texture asset pack first. JSON replacement-rule packs cannot be applied as textures.")
+            self.show_error("Select an imported JSON texture pack first.")
             return
         path = item.data(Qt.ItemDataRole.UserRole)
         try:
             manifest = json.loads((Path(path) / "nexus-pack.json").read_text(encoding="utf-8"))
             if manifest.get("pack_type") == "json-config":
-                raise ValueError("This is a JSON replacement-rules configuration, not a texture asset pack.")
+                raise ValueError("Selected pack is a JSON replacement-rules configuration.")
         except Exception as exc:
             self.show_error(str(exc))
             return
