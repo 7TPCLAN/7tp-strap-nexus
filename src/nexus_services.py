@@ -157,32 +157,9 @@ def _extract_pack_zip(source: Path, staging: Path) -> int:
     return count
 
 
-def import_pack(source_text: str, requested_name: str) -> dict[str, Any]:
-    ensure_dirs()
-    source = Path(source_text).expanduser().resolve()
-    if not source.exists() or (not source.is_file() and not source.is_dir()):
-        raise ValueError("Choose an existing ZIP archive or folder.")
-    name = safe_name(requested_name)
-    destination = _unique_destination(PACKS_DIR, name)
-    staging = Path(tempfile.mkdtemp(prefix=".nexus-pack-", dir=PACKS_DIR))
-    try:
-        if source.is_dir():
-            count = _copy_pack_folder(source, staging)
-            source_kind = "folder"
-        elif source.suffix.lower() == ".zip":
-            count = _extract_pack_zip(source, staging)
-            source_kind = "ZIP archive"
-        else:
-            raise ValueError("Please choose a ZIP archive or a folder containing pack assets.")
-        if count == 0:
-            raise ValueError("No supported texture files were found. Supported files include PNG, JPG, WEBP, DDS and KTX.")
-        manifest = {"name": name, "assets": count, "source": source_kind, "format_version": 1}
-        (staging / "nexus-pack.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-        staging.rename(destination)
-        return {"name": name, "assets": count, "path": str(destination)}
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging, ignore_errors=True)
+def import_pack(source_text: str, requested_name: str = "") -> dict[str, Any]:
+    """Reject legacy archive/folder imports; Nexus Packs accepts JSON only."""
+    raise ValueError("Nexus Packs accepts .json files only. ZIP, RAR, and folder imports are not supported.")
 
 
 def import_json_pack(source_text: str, requested_name: str = "") -> dict[str, Any]:
