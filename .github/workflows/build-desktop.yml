@@ -1,0 +1,69 @@
+name: Build Linux and macOS desktop apps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "assets/**"
+      - "requirements.txt"
+      - "README.md"
+      - ".github/workflows/build-desktop.yml"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact: 7TP-Nexus-Strap-Linux
+          - os: macos-latest
+            platform: macos
+            artifact: 7TP-Nexus-Strap-macOS
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Linux Qt dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+      - name: Install app dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Build desktop app
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "7TP Nexus Strap" --add-data "assets/nexus-logo.svg:assets" --add-data "assets/nexus-icon.svg:assets" src/main.py
+      - name: Package Linux app
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          tar -czf ../7TP-Nexus-Strap-Linux.tar.gz "7TP Nexus Strap"
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent "7TP Nexus Strap.app" ../7TP-Nexus-Strap-macOS.zip
+      - name: Upload Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: 7TP-Nexus-Strap-Linux.tar.gz
+          if-no-files-found: error
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: 7TP-Nexus-Strap-macOS.zip
+          if-no-files-found: error
