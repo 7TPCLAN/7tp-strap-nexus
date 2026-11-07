@@ -19,7 +19,7 @@ By 7TPCLAN — Developer: ThunderPainYT
 2. Install dependencies: `python -m pip install -r requirements.txt`
 3. Start the app: `python src/main.py`
 
-## Windows build
+## Desktop builds\nThe Windows installer is built by `.github/workflows/build-windows.yml`. Linux and macOS desktop packages are built by `.github/workflows/build-desktop.yml` and uploaded as GitHub Actions artifacts. These are initial desktop packages, not signed/notarized installers. Roblox launching, client-file integration, and Roblox-window recording remain Windows-only; FFmpeg capture is not bundled in Linux/macOS packages yet.\n\n## Windows build
 GitHub Actions downloads an LGPL FFmpeg Windows build, bundles it with the app, packages everything into a single `7TP-Nexus-Strap-Setup.exe` installer using Inno Setup, and uploads that installer as the build artifact. Pushing a version tag such as `v0.1.0` publishes a GitHub Release with the setup EXE as its only attached release asset. The installed app includes FFmpeg license and third-party notices.
 
 ## Third-party software and licensing
@@ -31,5 +31,5 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for FFmpeg build and licens
 
 Nexus Strap is an independent implementation. Compatibility varies by game and platform. It does not bypass anti-cheat or promise unsupported game-file modifications.
 
-## Current limitations
-This is an early functional foundation, not a finished replacement for either reference project. JSON replacement-rule packs can currently be imported, validated and inspected. Their rules are not automatically applied because the replacement engine and exact pack mapping format have not yet been verified against a real compatible pack. The launcher now requests the Roblox app protocol (`roblox://`) instead of opening Roblox Home in a browser; the protocol may open the app without joining a specific experience. Launcher rules are stored in `launcher_rules.json` under the Nexus app configuration directory. Launcher replacement, audio capture, update delivery and in-app crash reporting are not implemented.
+## Android support\nAndroid is not supported by the current desktop application. A native mobile client and Android packaging workflow are required; this is a separate development stage and no APK is available yet.\n\n## Current limitations
+This is an early functional foundation, not a finished replacement for either reference project. Linux and macOS builds provide the desktop interface and local configuration features, but platform-specific Roblox integration is not available on those systems yet. JSON replacement-rule packs can currently be imported, validated and inspected. Their rules are not automatically applied because the replacement engine and exact pack mapping format have not yet been verified against a real compatible pack. The launcher now requests the Roblox app protocol (`roblox://`) instead of opening Roblox Home in a browser; the protocol may open the app without joining a specific experience. Launcher rules are stored in `launcher_rules.json` under the Nexus app configuration directory. Launcher replacement, audio capture, update delivery and in-app crash reporting are not implemented.
