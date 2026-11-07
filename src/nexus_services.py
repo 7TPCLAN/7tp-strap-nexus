@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import tempfile
+import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,16 @@ from typing import Any
 
 from PIL import Image, ImageOps
 
-APP_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share")) / "7TPCLAN" / "NexusStrap"
+def _app_data_root() -> Path:
+    """Return the native per-user application-data directory."""
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+
+APP_DIR = _app_data_root() / "7TPCLAN" / "NexusStrap"
 PACKS_DIR = APP_DIR / "packs"
 SKIES_DIR = APP_DIR / "skies"
 PROFILES_DIR = APP_DIR / "profiles"
